@@ -15,7 +15,7 @@ evidence item id
 
 creator
 
-owner (police, lawyer, analyst, executive).
+owner (police, lawyer, analyst, executive).\n
 
 
 The following are commands to interact with the program
