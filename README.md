@@ -5,7 +5,7 @@ Group 21
 Jonathan Lin, Ryan Rajesh, Joshin Sam, Samay Sharma
 
 
-The program generates a blockchain for a chain of custody. It stores the 
+The program generates a blockchain for a chain of custody. It stores the following:
 
 timestamp (regular unix timestamp)
 
