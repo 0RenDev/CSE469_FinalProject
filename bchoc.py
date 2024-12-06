@@ -22,6 +22,8 @@ passwords = {
 }
 blockchain_path = os.getenv('BCHOC_FILE_PATH', 'blockchain.bin')
 evidences = set()
+setkeys = set()
+setblocks = {}
 BLOCK_SIZE = 16
 # This function was generated with assistance from ChatGPT, an AI tool developed by OpenAI.
 # Reference: OpenAI. (2024). ChatGPT [Large language model]. openai.com/chatgpt
@@ -556,46 +558,75 @@ def show_history(case_id=None, item_id=None, num_entries=None, reverse=False):
                     print(f'Time: {datetime.datetime.fromtimestamp(timestamp).isoformat()}Z')
                     print()
 
+# This is a helper function for verify that makes key-value pairs for all the blocks
+def verifyhelper():
+    allblocks = getblocks()
+    for tempBlock,tempData in allblocks:
+        _, _, case_id, evidence_id, state, _, _, data_length = struct.unpack('32s d 32s 32s 12s 12s 12s I', tempBlock)
+        data_length = int(data_length)
+        case_id = uuid.UUID(bytes=decrypt(case_id))
+        evidence_id = int.from_bytes(decrypt(evidence_id), byteorder='big')
+        key = (case_id, evidence_id)
+        setkeys.add(key)
+        if key in setblocks:
+            setblocks[key].append(tempBlock)
+        else:
+            setblocks[key] = [tempBlock]
+
 #Verify function to verify if the chain is valid
 def verify():
     blockchain_path = os.getenv('BCHOC_FILE_PATH', 'blockchain.bin')
-
     if not os.path.exists(blockchain_path):
         print("Blockchain file does not exist.")
         sys.exit(1)
-    # blocks = []
+    allblocks = getblocks()
+    first_block_header = allblocks[0][0]
+    first_block_data = allblocks[0][1]
+    if(first_block_header==None or len(first_block_header)<144 or first_block_data!=b"Initial block\0"):
+        print("Invalid Blockchain file")
+        sys.exit(1)
+    prev_hash, _, case_id, evidence_id, state, _, _, data_length = struct.unpack('32s d 32s 32s 12s 12s 12s I', first_block_header[:144])
+    if(prev_hash != b'\x00' * 32):
+        print("Blockchain file invalid.")
+        sys.exit(1)
     prev_block = None
     prev_data = None
-    # with open(blockchain_path,"rb") as file: 
-    #     while True: 
-    #         block = file.read(144)
-    #         if (block == None or len(block) < 144):
-    #             print("Hello1")
-    #             print("Blockchain file invalid.")
-    #             sys.exit(1)
-    #         if len(block) == 0:
-    #             break
-    #         blocks.append(block)
-
-    allblocks = getblocks()
     for tempBlock,tempData in allblocks:
         # unpack each block to get the prev_hash for prev block
         if prev_block != None:
             prev_hash, timestamp, case_id, evidence_id,state, _, _, data_length = struct.unpack('32s d 32s 32s 12s 12s 12s I', tempBlock[:144])
             calculated_hash = hashlib.sha256(prev_block+prev_data).hexdigest()
             if (prev_hash.hex() != calculated_hash):
-                print("Blockchain file invalid1.")
+                print("Blockchain file invalid.")
                 sys.exit(1)
-
-            _, prev_timestamp, prev_case_id, prev_evidence_id,prev_state, _, _, _ = struct.unpack('32s d 32s 32s 12s 12s 12s I', prev_block[:144]) # previous blocks unpacked.
-
-            if (prev_case_id == case_id and prev_evidence_id == evidence_id and prev_state == state):
-                print("Blockchain file invalid2.")
-                sys.exit(1)
-        else:
-            prev_block = tempBlock
-            prev_data = tempData
-
+        prev_block = tempBlock
+        prev_data = tempData
+    verifyhelper()
+    for key in setkeys:
+        blockarr = setblocks[key]
+        if(len(blockarr) >1):
+            for i in range(1,len(blockarr)):
+                prev_hash, _, case_id, evidence_id, curr_state, _, _, data_length = struct.unpack('32s d 32s 32s 12s 12s 12s I', blockarr[i][:144])
+                prev_hash, _, case_id, evidence_id, earlier_state, _, _, data_length = struct.unpack('32s d 32s 32s 12s 12s 12s I', blockarr[i-1][:144])
+                earlier_state = earlier_state.replace(b'\x00',b'').decode('utf-8')
+                curr_state = curr_state.replace(b'\x00',b'').decode('utf-8')
+                if curr_state == "RELEASED" or curr_state == "DESTROYED" or curr_state == "DISPOSED":
+                    curr_state = "REMOVED"
+                if earlier_state == "RELEASED" or earlier_state == "DESTROYED" or earlier_state == "DISPOSED":
+                    earlier_state = "REMOVED"
+                if earlier_state == 'REMOVED':
+                    print("Blockchain file invalid.")
+                    sys.exit(1)
+                if curr_state == 'CHECKEDIN' and earlier_state == 'CHECKEDIN':
+                    print("Blockchain file invalid.")
+                    sys.exit(1)
+                if curr_state == 'CHECKEDOUT' and earlier_state == 'CHECKEDOUT':
+                    print("Blockchain file invalid.")
+                    sys.exit(1)
+                if curr_state == 'REMOVED' and earlier_state == 'REMOVED':
+                    print("Blockchain file invalid.")
+                    sys.exit(1)
+    print("Valid blockchain file")
                     
 
 
